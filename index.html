@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Image to Line Art / Sketch with JS</title>
+  </head>
+  <body>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.10.0/dist/ort.js"></script>
+    
+    <div>
+      <input type="file" accept="image/*" id="fileInputEl">
+      <br>
+      or imgur.com url: <input id="imgUrlInput" style="width:250px;" value="https://i.imgur.com/ec4Ao4s.png">  <!-- karpathy: https://i.imgur.com/WEIKDpX.jpg --> <!-- 512px astronaut: https://i.imgur.com/ec4Ao4s.png -->
+      <br>
+      <button id="startBtn" onclick="main()" disabled>loading model</button>
+    </div>
+    <p><a href="https://github.com/josephrocca/image-to-line-art-js">github repo</a> - <a href="https://huggingface.co/rocca/informative-drawings-line-art-onnx">huggingface repo</a></p>
+    
+    <script>
+      if(self.crossOriginIsolated) { // needs to be cross-origin-isolated to use wasm threads. you need to serve this html file with these two headers: https://web.dev/coop-coep/
+        ort.env.wasm.numThreads = navigator.hardwareConcurrency
+      }
+      
+      let onnxSession;
+      (async function() {
+        console.log("Downloading model... (see network tab for progress)");
+        onnxSession = await ort.InferenceSession.create('https://huggingface.co/rocca/informative-drawings-line-art-onnx/resolve/main/model.onnx', { executionProviders: ["wasm"] });
+        console.log("Model loaded.");
+        startBtn.disabled = false;
+        startBtn.textContent = "start";
+      })();
+      
+      async function main() {
+        startBtn.disabled = true;
+         
+        let inputBlob;
+        if(fileInputEl.files[0]) inputBlob = fileInputEl.files[0];
+        else inputBlob = await fetch(imgUrlInput.value, {referrer:""}).then(r => r.blob());
+        
+        let {data, width, height} = await blobToLinearRGBArray(inputBlob);
+
+        const feeds = {'input': new ort.Tensor('float32', data, [1, 3, height, width])};
+
+        console.log("Running inference...");
+        let t = Date.now();
+        const results = await onnxSession.run(feeds);
+        console.log(`Finished in ${Date.now()-t}ms`);
+
+        const out = results["output"]; // greyscale data tensor
+        console.log(`results:`, out);
+        
+        let blob = await linearGreyscaleArrayToBlob(out.data, {width:out.dims[3], height:out.dims[2]});
+        let blobUrl = URL.createObjectURL(blob);
+        let imgEl = document.createElement("img");
+        imgEl.src = blobUrl;
+        document.body.appendChild(imgEl);
+        
+        startBtn.disabled = false;
+      }
+      
+      async function getBlobImageDims(blob) {
+        let img = await createImageBitmap(blob);
+        return {width:img.width, height:img.height};
+      }
+      
+      async function linearGreyscaleArrayToBlob(linearArr, dims) {
+        let dataArray = [];
+        for(let i = 0; i < linearArr.length; i++) {
+          dataArray.push(linearArr[i]*255); // R
+          dataArray.push(linearArr[i]*255); // G
+          dataArray.push(linearArr[i]*255); // B
+          dataArray.push(1*255);            // A
+        }
+        //let imageData = ctx.createImageData(256, 256);
+        let imageData = new ImageData(new Uint8ClampedArray(dataArray), dims.width, dims.height);
+        let canvas = new OffscreenCanvas(dims.width, dims.height);
+        let ctx = canvas.getContext("2d");
+        ctx.putImageData(imageData, 0, 0);
+        return canvas.convertToBlob({type:"image/png"});
+      }
+      
+      // this function resizes to 256px width
+      async function blobToLinearRGBArray(blob) {
+        let img = await createImageBitmap(blob);
+        //let widthScaleFactor = 256/img.width; // e.g. if width is 512, we need to scale width and height by 0.5
+        //let height = Math.round(img.height*widthScaleFactor);
+        //let canvas = new OffscreenCanvas(256, height);
+        let canvas = new OffscreenCanvas(img.width, img.height);
+        let ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        let rgbData = [[], [], []]; // [r, g, b]
+        // remove alpha and put into correct shape:
+        let d = imageData.data;
+        for(let i = 0; i < d.length; i += 4) { 
+          let x = (i/4) % canvas.width;
+          let y = Math.floor((i/4) / canvas.width)
+          if(!rgbData[0][y]) rgbData[0][y] = [];
+          if(!rgbData[1][y]) rgbData[1][y] = [];
+          if(!rgbData[2][y]) rgbData[2][y] = [];
+          rgbData[0][y][x] = d[i+0]/255;
+          rgbData[1][y][x] = d[i+1]/255;
+          rgbData[2][y][x] = d[i+2]/255;
+        }
+        rgbData = Float32Array.from(rgbData.flat().flat());
+        return {data:rgbData, width:img.width, height:img.height};
+      }
+    </script>
+  </body>
+</html>
