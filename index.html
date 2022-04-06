@@ -33,6 +33,7 @@
         if(!fileInputEl.files[0]) return alert("Please select some images first.");
         
         startBtn.disabled = true;
+        startBtn.innerHTML = "processing...";
         
         let inputBlob;
         for(let inputBlob of fileInputEl.files) {
@@ -56,6 +57,7 @@
         }
         
         startBtn.disabled = false;
+        startBtn.innerHTML = "start";
       }
       
       async function getBlobImageDims(blob) {
