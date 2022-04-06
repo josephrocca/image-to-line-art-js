@@ -7,11 +7,9 @@
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.10.0/dist/ort.js"></script>
     
     <div>
-      <input type="file" accept="image/*" id="fileInputEl">
+      Select one or more images: <input type="file" accept="image/*" multiple id="fileInputEl">
       <br>
-      or imgur.com url: <input id="imgUrlInput" style="width:250px;" value="https://i.imgur.com/ec4Ao4s.png">  <!-- karpathy: https://i.imgur.com/WEIKDpX.jpg --> <!-- 512px astronaut: https://i.imgur.com/ec4Ao4s.png -->
-      <br>
-      <button id="startBtn" onclick="main()" disabled>loading model</button>
+      <button id="startBtn" onclick="main()" disabled>loading model...</button>
     </div>
     <p><a href="https://github.com/josephrocca/image-to-line-art-js">github repo</a> - <a href="https://huggingface.co/rocca/informative-drawings-line-art-onnx">huggingface repo</a></p>
     
@@ -19,6 +17,8 @@
       if(self.crossOriginIsolated) { // needs to be cross-origin-isolated to use wasm threads. you need to serve this html file with these two headers: https://web.dev/coop-coep/
         ort.env.wasm.numThreads = navigator.hardwareConcurrency
       }
+      
+      if(!window.OffscreenCanvas) alert("Your browser doesn't support OffscreenCanvas - a browser feature that was standardized way back in 2018. Please use a modern browser like Chrome, Edge or Brave.");
       
       let onnxSession;
       (async function() {
@@ -30,29 +30,30 @@
       })();
       
       async function main() {
+        if(!fileInputEl.files[0]) return alert("Please select some images first.");
+        
         startBtn.disabled = true;
-         
+        
         let inputBlob;
-        if(fileInputEl.files[0]) inputBlob = fileInputEl.files[0];
-        else inputBlob = await fetch(imgUrlInput.value, {referrer:""}).then(r => r.blob());
-        
-        let {data, width, height} = await blobToLinearRGBArray(inputBlob);
+        for(let inputBlob of fileInputEl.files) {
+          let {data, width, height} = await blobToLinearRGBArray(inputBlob);
 
-        const feeds = {'input': new ort.Tensor('float32', data, [1, 3, height, width])};
+          const feeds = {'input': new ort.Tensor('float32', data, [1, 3, height, width])};
 
-        console.log("Running inference...");
-        let t = Date.now();
-        const results = await onnxSession.run(feeds);
-        console.log(`Finished in ${Date.now()-t}ms`);
+          console.log("Running inference...");
+          let t = Date.now();
+          const results = await onnxSession.run(feeds);
+          console.log(`Finished in ${Date.now()-t}ms`);
 
-        const out = results["output"]; // greyscale data tensor
-        console.log(`results:`, out);
-        
-        let blob = await linearGreyscaleArrayToBlob(out.data, {width:out.dims[3], height:out.dims[2]});
-        let blobUrl = URL.createObjectURL(blob);
-        let imgEl = document.createElement("img");
-        imgEl.src = blobUrl;
-        document.body.appendChild(imgEl);
+          const out = results["output"]; // greyscale data tensor
+          console.log(`results:`, out);
+
+          let blob = await linearGreyscaleArrayToBlob(out.data, {width:out.dims[3], height:out.dims[2]});
+          let blobUrl = URL.createObjectURL(blob);
+          let imgEl = document.createElement("img");
+          imgEl.src = blobUrl;
+          document.body.appendChild(imgEl);
+        }
         
         startBtn.disabled = false;
       }
@@ -81,9 +82,6 @@
       // this function resizes to 256px width
       async function blobToLinearRGBArray(blob) {
         let img = await createImageBitmap(blob);
-        //let widthScaleFactor = 256/img.width; // e.g. if width is 512, we need to scale width and height by 0.5
-        //let height = Math.round(img.height*widthScaleFactor);
-        //let canvas = new OffscreenCanvas(256, height);
         let canvas = new OffscreenCanvas(img.width, img.height);
         let ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
