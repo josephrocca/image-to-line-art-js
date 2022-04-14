@@ -110,7 +110,7 @@
         return {data:rgbData, width:img.width, height:img.height};
       }
       
-      function downloadOutputImages() {
+      async function downloadOutputImages() {
         let directoryHandle = await window.showDirectoryPicker();
         for(let img of [...document.querySelectorAll("img")]) {
           let url = img.src;
