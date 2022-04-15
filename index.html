@@ -84,7 +84,7 @@
         let canvas = new OffscreenCanvas(dims.width, dims.height);
         let ctx = canvas.getContext("2d");
         ctx.putImageData(imageData, 0, 0);
-        return canvas.convertToBlob({type:"image/png"});
+        return canvas.convertToBlob({type:"image/jpg"});
       }
       
       // this function resizes to 256px width
@@ -116,7 +116,7 @@
         let directoryHandle = await window.showDirectoryPicker();
         for(let img of [...document.querySelectorAll("img")]) {
           let url = img.src;
-          let name = img.dataset.name;
+          let name = img.dataset.name+".lines.jpg";
           let fileHandle = await directoryHandle.getFileHandle(name, {create:true});
           let response = await fetch(url);
           await response.body.pipeTo(await fileHandle.createWritable());
